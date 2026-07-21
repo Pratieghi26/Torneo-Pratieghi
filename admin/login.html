@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Accesso amministratore — Torneo di Bocce Pratieghi</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,500&family=Karla:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+
+    :root {
+      --cipresso: #2B3D2F;
+      --terracotta: #B8503B;
+      --terracotta-scuro: #9A3F2E;
+      --carta: #F6EFDF;
+      --inchiostro: #23281F;
+      --inchiostro-soft: #4A4E42;
+      --campo-ghiaia-scuro: #D8C7A3;
+      --font-display: 'Fraunces', serif;
+      --font-body: 'Karla', sans-serif;
+      --font-mono: 'IBM Plex Mono', monospace;
+      --radius: 4px;
+      --shadow-soft: 0 6px 20px rgba(35, 40, 31, 0.12);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: var(--font-body);
+      color: var(--inchiostro);
+    }
+
+    .pagina-login {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: var(--cipresso);
+      padding: 1.5rem;
+    }
+
+    .login-card {
+      background: var(--carta);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-soft);
+      padding: 2.6rem 2.2rem;
+      width: 100%;
+      max-width: 380px;
+    }
+
+    .login-card .eyebrow-admin {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--terracotta);
+      margin: 0 0 0.4rem;
+    }
+
+    .login-card h1 {
+      font-family: var(--font-display);
+      font-size: 1.7rem;
+      margin: 0 0 1.8rem;
+    }
+
+    .campo {
+      margin-bottom: 1.1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .campo label {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--inchiostro-soft);
+    }
+
+    .campo input {
+      font-family: var(--font-body);
+      font-size: 1rem;
+      padding: 0.65rem 0.8rem;
+      border: 1.5px solid var(--campo-ghiaia-scuro);
+      border-radius: var(--radius);
+      background: #fff;
+      color: var(--inchiostro);
+    }
+
+    .campo input:focus {
+      outline: none;
+      border-color: var(--terracotta);
+    }
+
+    .btn {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      letter-spacing: 0.03em;
+      padding: 0.65rem 1.3rem;
+      border-radius: var(--radius);
+      border: 1.5px solid var(--inchiostro);
+      background: transparent;
+      color: var(--inchiostro);
+      cursor: pointer;
+      width: 100%;
+      justify-content: center;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 0.4rem;
+    }
+
+    .btn-primario {
+      background: var(--terracotta);
+      border-color: var(--terracotta);
+      color: var(--carta);
+    }
+
+    .btn-primario:hover { background: var(--terracotta-scuro); }
+
+    .messaggio-errore {
+      background: rgba(184, 80, 59, 0.1);
+      border: 1px solid var(--terracotta);
+      color: var(--terracotta-scuro);
+      padding: 0.7rem 0.9rem;
+      border-radius: var(--radius);
+      font-size: 0.88rem;
+      margin-bottom: 1.1rem;
+      display: none;
+    }
+
+    .messaggio-errore.visibile { display: block; }
+
+    .login-torna {
+      display: block;
+      text-align: center;
+      margin-top: 1.4rem;
+      font-size: 0.85rem;
+      color: rgba(246,239,223,0.75);
+      text-decoration: none;
+    }
+
+    .login-torna:hover { color: var(--carta); }
+  </style>
+</head>
+<body>
+
+  <div class="pagina-login">
+    <div class="login-card">
+      <p class="eyebrow-admin">Area riservata</p>
+      <h1>Accesso amministratore</h1>
+
+      <div class="messaggio-errore" id="messaggio-errore"></div>
+
+      <form id="form-login">
+        <div class="campo">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" required autocomplete="username">
+        </div>
+        <div class="campo">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn btn-primario" id="btn-login">Accedi</button>
+      </form>
+    </div>
+
+    <a class="login-torna" href="../index.html">← Torna alla pagina pubblica del torneo</a>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import {
+      getAuth,
+      signInWithEmailAndPassword,
+      onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDLqQY2FLbEJvkkglQE_Eq_bfR1GhYhw1U",
+      authDomain: "torneo-bocce-pratieghi.firebaseapp.com",
+      projectId: "torneo-bocce-pratieghi",
+      storageBucket: "torneo-bocce-pratieghi.firebasestorage.app",
+      messagingSenderId: "1002638493349",
+      appId: "1:1002638493349:web:d80c5675e315aca71f6f4c"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+
+    const form = document.getElementById("form-login");
+    const btnLogin = document.getElementById("btn-login");
+    const boxErrore = document.getElementById("messaggio-errore");
+
+    const messaggi = {
+      "auth/invalid-email": "L'indirizzo email non è valido.",
+      "auth/invalid-credential": "Email o password non corretti.",
+      "auth/wrong-password": "Email o password non corretti.",
+      "auth/user-not-found": "Email o password non corretti.",
+      "auth/too-many-requests": "Troppi tentativi. Riprova tra qualche minuto.",
+    };
+
+    onAuthStateChanged(auth, user => {
+      if (user) {
+        window.location.href = "dashboard.html";
+      }
+    });
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      boxErrore.classList.remove("visibile");
+
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+
+      btnLogin.disabled = true;
+      btnLogin.textContent = "Accesso in corso…";
+
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+        window.location.href = "dashboard.html";
+      } catch (errore) {
+        boxErrore.textContent = messaggi[errore.code] || "Si è verificato un errore. Riprova.";
+        boxErrore.classList.add("visibile");
+        btnLogin.disabled = false;
+        btnLogin.textContent = "Accedi";
+      }
+    });
+  </script>
+</body>
+</html>
