@@ -394,6 +394,14 @@
     .match-box .lato.vuoto {
       color: var(--campo-ghiaia-scuro);
     }
+
+    .match-box .lato.selezionabile {
+      cursor: pointer;
+      transition: background 0.12s ease;
+    }
+    .match-box .lato.selezionabile:hover {
+      background: var(--campo-ghiaia);
+    }
   </style>
 </head>
 <body>
@@ -742,6 +750,44 @@
       return `${c.uomo} - ${c.donna}`;
     }
 
+    // Simula l'intero tabellone a partire dagli slot iniziali, risolvendo
+    // subito le partite con BYE (anche a cascata su più turni). Le partite
+    // reali (coppia contro coppia) restano con vincitore null, in attesa
+    // che l'amministratore selezioni chi ha vinto.
+    function costruisciTabelloneCompleto(slots) {
+      const turni = [];
+      let attuali = slots.map(s =>
+        s.bye ? { tipo: "bye" } : { tipo: "coppia", label: etichettaCoppia(s.coppia) }
+      );
+
+      while (attuali.length > 1) {
+        const turno = [];
+        const prossimi = [];
+
+        for (let i = 0; i < attuali.length; i += 2) {
+          const A = attuali[i];
+          const B = attuali[i + 1];
+          const squadraA = A.tipo === "coppia" ? A.label : (A.tipo === "bye" ? "BYE" : null);
+          const squadraB = B.tipo === "coppia" ? B.label : (B.tipo === "bye" ? "BYE" : null);
+
+          let vincitore = null;
+          let prossimo = { tipo: "pendente" };
+
+          if (A.tipo === "bye" && B.tipo !== "bye") { vincitore = "b"; prossimo = B; }
+          else if (B.tipo === "bye" && A.tipo !== "bye") { vincitore = "a"; prossimo = A; }
+          else if (A.tipo === "bye" && B.tipo === "bye") { prossimo = { tipo: "bye" }; }
+
+          turno.push({ squadraA, squadraB, vincitore });
+          prossimi.push(prossimo);
+        }
+
+        turni.push(turno);
+        attuali = prossimi;
+      }
+
+      return turni;
+    }
+
     async function caricaStatoTorneo(anno) {
       const snap = await getDoc(doc(db, "tornei", anno));
       return snap.exists() ? snap.data() : {};
@@ -832,6 +878,7 @@
       const coppieMescolate = mescola(coppie);
 
       const slots = costruisciSlot(coppieMescolate, dimensione);
+      const turni = costruisciTabelloneCompleto(slots);
 
       // Pulisce eventuali coppie/incontri di un sorteggio precedente
       const vecchieCoppie = await getDocs(collection(db, "tornei", anno, "coppie"));
@@ -850,22 +897,18 @@
         batchScrittura.set(rif, { numero: i + 1, uomo: c.uomo, donna: c.donna });
       });
 
-      for (let i = 0; i < slots.length; i += 2) {
-        const slotA = slots[i];
-        const slotB = slots[i + 1];
-        const squadraA = slotA.bye ? "BYE" : etichettaCoppia(slotA.coppia);
-        const squadraB = slotB.bye ? "BYE" : etichettaCoppia(slotB.coppia);
-        let vincitore = null;
-        if (slotA.bye && !slotB.bye) vincitore = "b";
-        if (slotB.bye && !slotA.bye) vincitore = "a";
-
-        const rif = doc(collection(db, "tornei", anno, "incontri"));
-        batchScrittura.set(rif, {
-          turno: 0,
-          posizione: i / 2,
-          squadraA, squadraB, vincitore
+      turni.forEach((turno, indiceTurno) => {
+        turno.forEach((match, posizione) => {
+          const rif = doc(db, "tornei", anno, "incontri", `${indiceTurno}_${posizione}`);
+          batchScrittura.set(rif, {
+            turno: indiceTurno,
+            posizione,
+            squadraA: match.squadraA,
+            squadraB: match.squadraB,
+            vincitore: match.vincitore
+          });
         });
-      }
+      });
 
       batchScrittura.set(doc(db, "tornei", anno), {
         dimensioneTabellone: dimensione,
@@ -890,28 +933,23 @@
       snapCoppie.forEach(d => coppie.push(d.data()));
       coppie.sort((a, b) => a.numero - b.numero);
 
-      const snapIncontri = await getDocs(collection(db, "tornei", anno, "incontri"));
-      const round0 = [];
-      snapIncontri.forEach(d => { if (d.data().turno === 0) round0.push(d.data()); });
-      round0.sort((a, b) => a.posizione - b.posizione);
-
-      const dimensione = statoTorneo.dimensioneTabellone || round0.length * 2;
+      const dimensione = statoTorneo.dimensioneTabellone;
       const bloccato = !!statoTorneo.bloccato;
+      const totaleTurni = Math.log2(dimensione);
 
-      // Calcola le colonne successive come turni "in attesa" (si popoleranno
-      // quando aggiungeremo la selezione dei vincitori, fase successiva).
-      const colonne = [round0.map(m => ({ a: m.squadraA, b: m.squadraB, vincitore: m.vincitore }))];
-      let numMatchAttuale = round0.length;
-      while (numMatchAttuale > 1) {
-        numMatchAttuale = numMatchAttuale / 2;
-        colonne.push(new Array(numMatchAttuale).fill(null));
-      }
+      const snapIncontri = await getDocs(collection(db, "tornei", anno, "incontri"));
+      const perTurno = Array.from({ length: totaleTurni }, () => []);
+      snapIncontri.forEach(d => {
+        const dati = d.data();
+        perTurno[dati.turno][dati.posizione] = dati;
+      });
 
       cardEl.innerHTML = `
         <h2>Sorteggio e tabellone</h2>
         <p class="sottotitolo">
           Tabellone da ${dimensione} coppie.
           ${bloccato ? `<span class="badge-bloccato">🔒 Bloccato</span>` : ""}
+          ${!bloccato ? `Tocca il nome della coppia che ha vinto per farla avanzare.` : ""}
         </p>
 
         <div class="griglia-coppie-lista">
@@ -924,10 +962,10 @@
 
         <div class="tabellone-wrap">
           <div class="tabellone">
-            ${colonne.map((matchList, indiceColonna) => `
+            ${perTurno.map((matchList, indiceTurno) => `
               <div class="turno-colonna">
                 <div class="turno-titolo">${etichettaTurno(matchList.length)}</div>
-                ${matchList.map(m => renderMatchBox(m)).join("")}
+                ${matchList.map((m, posizione) => renderMatchBox(m, indiceTurno, posizione, bloccato)).join("")}
               </div>
             `).join("")}
           </div>
@@ -955,9 +993,20 @@
           }
         });
       }
+
+      if (!bloccato) {
+        cardEl.querySelectorAll(".lato.selezionabile").forEach(el => {
+          el.addEventListener("click", () => {
+            const t = Number(el.dataset.turno);
+            const p = Number(el.dataset.posizione);
+            const lato = el.dataset.lato;
+            selezionaVincitore(anno, t, p, lato, totaleTurni);
+          });
+        });
+      }
     }
 
-    function renderMatchBox(m) {
+    function renderMatchBox(m, indiceTurno, posizione, bloccato) {
       if (!m) {
         return `
           <div class="match-box">
@@ -966,14 +1015,76 @@
           </div>
         `;
       }
-      const classeA = m.vincitore === "a" ? "vince" : (m.a === "BYE" ? "bye" : "");
-      const classeB = m.vincitore === "b" ? "vince" : (m.b === "BYE" ? "bye" : "");
+
+      const decisa = m.vincitore !== null;
+      const cliccabileA = !decisa && !bloccato && m.squadraA && m.squadraB && m.squadraA !== "BYE";
+      const cliccabileB = !decisa && !bloccato && m.squadraA && m.squadraB && m.squadraB !== "BYE";
+
+      const classeA = [
+        m.vincitore === "a" ? "vince" : "",
+        m.squadraA === "BYE" ? "bye" : "",
+        !m.squadraA ? "vuoto" : "",
+        cliccabileA ? "selezionabile" : ""
+      ].filter(Boolean).join(" ");
+
+      const classeB = [
+        m.vincitore === "b" ? "vince" : "",
+        m.squadraB === "BYE" ? "bye" : "",
+        !m.squadraB ? "vuoto" : "",
+        cliccabileB ? "selezionabile" : ""
+      ].filter(Boolean).join(" ");
+
+      const testoA = m.squadraA || "In attesa";
+      const testoB = m.squadraB || "In attesa";
+
       return `
         <div class="match-box">
-          <div class="lato ${classeA}">${m.a}</div>
-          <div class="lato ${classeB}">${m.b}</div>
+          <div class="lato ${classeA}" ${cliccabileA ? `data-turno="${indiceTurno}" data-posizione="${posizione}" data-lato="a"` : ""}>${testoA}</div>
+          <div class="lato ${classeB}" ${cliccabileB ? `data-turno="${indiceTurno}" data-posizione="${posizione}" data-lato="b"` : ""}>${testoB}</div>
         </div>
       `;
+    }
+
+    async function selezionaVincitore(anno, turno, posizione, lato, totaleTurni) {
+      const rifMatch = doc(db, "tornei", anno, "incontri", `${turno}_${posizione}`);
+      const snap = await getDoc(rifMatch);
+      if (!snap.exists()) return;
+      const dati = snap.data();
+      if (dati.vincitore !== null) return;
+
+      const vincitoreLabel = lato === "a" ? dati.squadraA : dati.squadraB;
+      await setDoc(rifMatch, { vincitore: lato }, { merge: true });
+      await propagaVincitore(anno, turno, posizione, vincitoreLabel, totaleTurni);
+      await renderSorteggio(anno);
+    }
+
+    async function propagaVincitore(anno, turno, posizione, vincitoreLabel, totaleTurni) {
+      const turnoProssimo = turno + 1;
+      if (turnoProssimo >= totaleTurni) return;
+
+      const posizioneProssima = Math.floor(posizione / 2);
+      const slot = posizione % 2 === 0 ? "squadraA" : "squadraB";
+      const rifProssimo = doc(db, "tornei", anno, "incontri", `${turnoProssimo}_${posizioneProssima}`);
+
+      await setDoc(rifProssimo, { [slot]: vincitoreLabel }, { merge: true });
+      await avanzaSeAutoRisolvibile(anno, turnoProssimo, posizioneProssima, totaleTurni);
+    }
+
+    async function avanzaSeAutoRisolvibile(anno, turno, posizione, totaleTurni) {
+      const rif = doc(db, "tornei", anno, "incontri", `${turno}_${posizione}`);
+      const snap = await getDoc(rif);
+      if (!snap.exists()) return;
+      const dati = snap.data();
+      if (dati.vincitore !== null) return;
+
+      let vincitore = null;
+      let label = null;
+      if (dati.squadraA === "BYE" && dati.squadraB) { vincitore = "b"; label = dati.squadraB; }
+      else if (dati.squadraB === "BYE" && dati.squadraA) { vincitore = "a"; label = dati.squadraA; }
+      else return;
+
+      await setDoc(rif, { vincitore }, { merge: true });
+      await propagaVincitore(anno, turno, posizione, label, totaleTurni);
     }
   </script>
 </body>
