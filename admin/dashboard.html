@@ -1,5 +1,4 @@
-
-      <!doctype html>
+<!doctype html>
 <html lang="it">
 <head>
   <meta charset="UTF-8">
@@ -293,6 +292,108 @@
       border: 1.5px solid var(--inchiostro);
       border-radius: var(--radius);
     }
+
+    /* ---------- Sorteggio e tabellone ---------- */
+    .riga-sorteggio {
+      display: flex;
+      align-items: center;
+      gap: 0.8rem;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+
+    .riga-sorteggio select {
+      font-family: var(--font-mono);
+      font-size: 0.95rem;
+      padding: 0.5rem 0.8rem;
+      border: 1.5px solid var(--inchiostro);
+      border-radius: var(--radius);
+      background: #fff;
+    }
+
+    .badge-bloccato {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      padding: 0.25rem 0.7rem;
+      border-radius: 999px;
+      background: var(--cipresso);
+      color: var(--carta);
+    }
+
+    .griglia-coppie-lista {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 0.6rem;
+      margin-bottom: 1.4rem;
+    }
+
+    .coppia-mini {
+      background: #fff;
+      border: 1px solid var(--campo-ghiaia-scuro);
+      border-left: 3px solid var(--terracotta);
+      border-radius: var(--radius);
+      padding: 0.6rem 0.8rem;
+      font-size: 0.9rem;
+    }
+
+    .tabellone-wrap {
+      overflow-x: auto;
+      padding-bottom: 0.5rem;
+    }
+
+    .tabellone {
+      display: flex;
+      gap: 2rem;
+      min-width: max-content;
+      padding: 0.5rem 0.1rem;
+    }
+
+    .turno-colonna {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-around;
+      gap: 0.9rem;
+      min-width: 190px;
+    }
+
+    .turno-titolo {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--inchiostro-soft);
+      text-align: center;
+      margin-bottom: 0.3rem;
+    }
+
+    .match-box {
+      background: #fff;
+      border: 1px solid var(--campo-ghiaia-scuro);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .match-box .lato {
+      padding: 0.5rem 0.7rem;
+      font-size: 0.86rem;
+    }
+
+    .match-box .lato:first-child { border-bottom: 1px solid var(--campo-ghiaia-scuro); }
+
+    .match-box .lato.vince {
+      background: var(--cipresso);
+      color: var(--carta);
+      font-weight: 600;
+    }
+
+    .match-box .lato.bye {
+      color: var(--inchiostro-soft);
+      font-style: italic;
+    }
+
+    .match-box .lato.vuoto {
+      color: var(--campo-ghiaia-scuro);
+    }
   </style>
 </head>
 <body>
@@ -379,14 +480,14 @@
     });
 
     // ---------- Messaggi ----------
-    
-function mostraMessaggio(testo, tipo) {
+    function mostraMessaggio(testo, tipo) {
       boxMessaggio.textContent = testo;
       boxMessaggio.className = `messaggio visibile ${tipo}`;
       if (tipo === "successo") {
         setTimeout(() => boxMessaggio.classList.remove("visibile"), 4000);
       }
     }
+
     // ---------- Gestione edizioni ----------
     async function caricaEdizioni() {
       try {
@@ -508,10 +609,16 @@ function mostraMessaggio(testo, tipo) {
             </div>
           </div>
         </div>
+
+        <div class="card" id="card-sorteggio">
+          <h2>Sorteggio e tabellone</h2>
+          <p class="sottotitolo">Caricamento…</p>
+        </div>
       `;
 
       collegaEventiPartecipanti(anno);
       await caricaPartecipanti(anno);
+      await renderSorteggio(anno);
     }
 
     function collegaEventiPartecipanti(anno) {
@@ -600,6 +707,273 @@ function mostraMessaggio(testo, tipo) {
       cont.querySelectorAll("button[data-id]").forEach(btn => {
         btn.addEventListener("click", () => eliminaPartecipante(anno, btn.dataset.id));
       });
+    }
+
+    // ---------- Sorteggio ----------
+    function mescola(array) {
+      const copia = [...array];
+      for (let i = copia.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copia[i], copia[j]] = [copia[j], copia[i]];
+      }
+      return copia;
+    }
+
+    // Distribuisce i BYE in modo uniforme tra gli slot del tabellone,
+    // così non capitano mai due BYE vicini (quando i BYE sono la minoranza).
+    function costruisciSlot(coppieShuffled, dimensione) {
+      const numByes = dimensione - coppieShuffled.length;
+      const slots = [];
+      let indiceCoppia = 0;
+      let accumulatore = 0;
+      for (let i = 0; i < dimensione; i++) {
+        accumulatore += numByes;
+        if (numByes > 0 && accumulatore >= dimensione) {
+          accumulatore -= dimensione;
+          slots.push({ bye: true });
+        } else {
+          slots.push({ coppia: coppieShuffled[indiceCoppia++] });
+        }
+      }
+      return slots;
+    }
+
+    function etichettaCoppia(c) {
+      return `${c.uomo} - ${c.donna}`;
+    }
+
+    async function caricaStatoTorneo(anno) {
+      const snap = await getDoc(doc(db, "tornei", anno));
+      return snap.exists() ? snap.data() : {};
+    }
+
+    async function renderSorteggio(anno) {
+      const cardEl = document.getElementById("card-sorteggio");
+      const statoTorneo = await caricaStatoTorneo(anno);
+      const snapCoppie = await getDocs(collection(db, "tornei", anno, "coppie"));
+
+      if (snapCoppie.empty) {
+        renderFormSorteggio(cardEl, anno);
+      } else {
+        await renderTabelloneEsistente(cardEl, anno, statoTorneo, snapCoppie);
+      }
+    }
+
+    async function renderFormSorteggio(cardEl, anno) {
+      const snapPartecipanti = await getDocs(collection(db, "tornei", anno, "partecipanti"));
+      let numUomini = 0, numDonne = 0;
+      snapPartecipanti.forEach(d => {
+        if (d.data().genere === "uomo") numUomini++; else numDonne++;
+      });
+
+      const numCoppiePotenziali = numUomini;
+      const dimensioniValide = [8, 16, 32].filter(d => d >= numCoppiePotenziali);
+      const dimensioneConsigliata = dimensioniValide[0] || 32;
+
+      cardEl.innerHTML = `
+        <h2>Sorteggio e tabellone</h2>
+        <p class="sottotitolo">
+          ${numUomini} uomini, ${numDonne} donne inseriti.
+          ${numUomini !== numDonne
+            ? `<br><strong>Il numero di uomini e donne deve essere uguale per procedere.</strong>`
+            : `Pronto per il sorteggio.`}
+        </p>
+        <div class="riga-sorteggio">
+          <label style="font-family:var(--font-mono); font-size:0.8rem;">Dimensione tabellone:</label>
+          <select id="select-dimensione">
+            ${[8, 16, 32].map(d => `
+              <option value="${d}" ${d === dimensioneConsigliata ? "selected" : ""} ${d < numCoppiePotenziali ? "disabled" : ""}>
+                ${d} coppie
+              </option>
+            `).join("")}
+          </select>
+          <button class="btn btn-primario" id="btn-sorteggia" ${numUomini !== numDonne || numUomini === 0 ? "disabled" : ""}>
+            🎲 Esegui sorteggio
+          </button>
+        </div>
+      `;
+
+      const btnSorteggia = document.getElementById("btn-sorteggia");
+      if (btnSorteggia) {
+        btnSorteggia.addEventListener("click", () => {
+          const dimensione = Number(document.getElementById("select-dimensione").value);
+          eseguiSorteggio(anno, dimensione);
+        });
+      }
+    }
+
+    async function eseguiSorteggio(anno, dimensione) {
+      mostraMessaggio("Sorteggio in corso…", "successo");
+
+      const snapPartecipanti = await getDocs(collection(db, "tornei", anno, "partecipanti"));
+      const uomini = [];
+      const donne = [];
+      snapPartecipanti.forEach(d => {
+        const dati = d.data();
+        if (dati.genere === "uomo") uomini.push(dati.nome); else donne.push(dati.nome);
+      });
+
+      if (uomini.length !== donne.length) {
+        mostraMessaggio("Il numero di uomini e donne deve essere uguale.", "errore");
+        return;
+      }
+      if (uomini.length === 0) {
+        mostraMessaggio("Inserisci almeno un partecipante prima di sorteggiare.", "errore");
+        return;
+      }
+      if (uomini.length > dimensione) {
+        mostraMessaggio(`Troppe coppie (${uomini.length}) per un tabellone da ${dimensione}.`, "errore");
+        return;
+      }
+
+      const uominiMescolati = mescola(uomini);
+      const donneMescolate = mescola(donne);
+      const coppie = uominiMescolati.map((uomo, i) => ({ uomo, donna: donneMescolate[i] }));
+      const coppieMescolate = mescola(coppie);
+
+      const slots = costruisciSlot(coppieMescolate, dimensione);
+
+      // Pulisce eventuali coppie/incontri di un sorteggio precedente
+      const vecchieCoppie = await getDocs(collection(db, "tornei", anno, "coppie"));
+      const vecchiIncontri = await getDocs(collection(db, "tornei", anno, "incontri"));
+      if (!vecchieCoppie.empty || !vecchiIncontri.empty) {
+        const batchPulizia = writeBatch(db);
+        vecchieCoppie.forEach(d => batchPulizia.delete(d.ref));
+        vecchiIncontri.forEach(d => batchPulizia.delete(d.ref));
+        await batchPulizia.commit();
+      }
+
+      const batchScrittura = writeBatch(db);
+
+      coppie.forEach((c, i) => {
+        const rif = doc(collection(db, "tornei", anno, "coppie"));
+        batchScrittura.set(rif, { numero: i + 1, uomo: c.uomo, donna: c.donna });
+      });
+
+      for (let i = 0; i < slots.length; i += 2) {
+        const slotA = slots[i];
+        const slotB = slots[i + 1];
+        const squadraA = slotA.bye ? "BYE" : etichettaCoppia(slotA.coppia);
+        const squadraB = slotB.bye ? "BYE" : etichettaCoppia(slotB.coppia);
+        let vincitore = null;
+        if (slotA.bye && !slotB.bye) vincitore = "b";
+        if (slotB.bye && !slotA.bye) vincitore = "a";
+
+        const rif = doc(collection(db, "tornei", anno, "incontri"));
+        batchScrittura.set(rif, {
+          turno: 0,
+          posizione: i / 2,
+          squadraA, squadraB, vincitore
+        });
+      }
+
+      batchScrittura.set(doc(db, "tornei", anno), {
+        dimensioneTabellone: dimensione,
+        bloccato: false
+      }, { merge: true });
+
+      await batchScrittura.commit();
+      mostraMessaggio("Sorteggio completato.", "successo");
+      await renderSorteggio(anno);
+    }
+
+    function etichettaTurno(numeroMatch) {
+      if (numeroMatch === 1) return "Finale";
+      if (numeroMatch === 2) return "Semifinali";
+      if (numeroMatch === 4) return "Quarti";
+      if (numeroMatch === 8) return "Ottavi";
+      return `${numeroMatch * 2} squadre`;
+    }
+
+    async function renderTabelloneEsistente(cardEl, anno, statoTorneo, snapCoppie) {
+      const coppie = [];
+      snapCoppie.forEach(d => coppie.push(d.data()));
+      coppie.sort((a, b) => a.numero - b.numero);
+
+      const snapIncontri = await getDocs(collection(db, "tornei", anno, "incontri"));
+      const round0 = [];
+      snapIncontri.forEach(d => { if (d.data().turno === 0) round0.push(d.data()); });
+      round0.sort((a, b) => a.posizione - b.posizione);
+
+      const dimensione = statoTorneo.dimensioneTabellone || round0.length * 2;
+      const bloccato = !!statoTorneo.bloccato;
+
+      // Calcola le colonne successive come turni "in attesa" (si popoleranno
+      // quando aggiungeremo la selezione dei vincitori, fase successiva).
+      const colonne = [round0.map(m => ({ a: m.squadraA, b: m.squadraB, vincitore: m.vincitore }))];
+      let numMatchAttuale = round0.length;
+      while (numMatchAttuale > 1) {
+        numMatchAttuale = numMatchAttuale / 2;
+        colonne.push(new Array(numMatchAttuale).fill(null));
+      }
+
+      cardEl.innerHTML = `
+        <h2>Sorteggio e tabellone</h2>
+        <p class="sottotitolo">
+          Tabellone da ${dimensione} coppie.
+          ${bloccato ? `<span class="badge-bloccato">🔒 Bloccato</span>` : ""}
+        </p>
+
+        <div class="griglia-coppie-lista">
+          ${coppie.map(c => `
+            <div class="coppia-mini">
+              <strong>${c.numero}.</strong> ${c.uomo} — ${c.donna}
+            </div>
+          `).join("")}
+        </div>
+
+        <div class="tabellone-wrap">
+          <div class="tabellone">
+            ${colonne.map((matchList, indiceColonna) => `
+              <div class="turno-colonna">
+                <div class="turno-titolo">${etichettaTurno(matchList.length)}</div>
+                ${matchList.map(m => renderMatchBox(m)).join("")}
+              </div>
+            `).join("")}
+          </div>
+        </div>
+
+        <div class="riga-sorteggio" style="margin-top:1.2rem;">
+          <button class="btn" id="btn-blocca">${bloccato ? "🔓 Sblocca sorteggio" : "🔒 Blocca sorteggio"}</button>
+          ${!bloccato ? `<button class="btn" id="btn-rifai">↻ Rifai sorteggio</button>` : ""}
+        </div>
+      `;
+
+      document.getElementById("btn-blocca").addEventListener("click", async () => {
+        await setDoc(doc(db, "tornei", anno), { bloccato: !bloccato }, { merge: true });
+        await renderSorteggio(anno);
+      });
+
+      const btnRifai = document.getElementById("btn-rifai");
+      if (btnRifai) {
+        btnRifai.addEventListener("click", () => {
+          const confermato = window.confirm(
+            "Rifare il sorteggio cancella le coppie e il tabellone attuali. Continuare?"
+          );
+          if (confermato) {
+            renderFormSorteggio(cardEl, anno);
+          }
+        });
+      }
+    }
+
+    function renderMatchBox(m) {
+      if (!m) {
+        return `
+          <div class="match-box">
+            <div class="lato vuoto">In attesa</div>
+            <div class="lato vuoto">In attesa</div>
+          </div>
+        `;
+      }
+      const classeA = m.vincitore === "a" ? "vince" : (m.a === "BYE" ? "bye" : "");
+      const classeB = m.vincitore === "b" ? "vince" : (m.b === "BYE" ? "bye" : "");
+      return `
+        <div class="match-box">
+          <div class="lato ${classeA}">${m.a}</div>
+          <div class="lato ${classeB}">${m.b}</div>
+        </div>
+      `;
     }
   </script>
 </body>
