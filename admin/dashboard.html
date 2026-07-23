@@ -433,6 +433,11 @@
       <div class="stato-vuoto-edizione">Nessuna edizione selezionata.</div>
     </div>
 
+    <div class="card" id="card-albo-oro">
+      <h2>Albo d'oro</h2>
+      <p class="sottotitolo">Caricamento…</p>
+    </div>
+
   </div>
 
   <script type="module">
@@ -479,6 +484,7 @@
       } else {
         emailUtente.textContent = user.email;
         caricaEdizioni();
+        renderAlboOro();
       }
     });
 
@@ -837,18 +843,23 @@
             🎲 Esegui sorteggio
           </button>
         </div>
+        <label style="display:flex; align-items:center; gap:0.5rem; font-size:0.85rem; color:var(--inchiostro-soft);">
+          <input type="checkbox" id="check-non-mescolare">
+          Non mescolare — usa uomini/donne nell'ordine inserito (per ricostruire un'edizione già disputata)
+        </label>
       `;
 
       const btnSorteggia = document.getElementById("btn-sorteggia");
       if (btnSorteggia) {
         btnSorteggia.addEventListener("click", () => {
           const dimensione = Number(document.getElementById("select-dimensione").value);
-          eseguiSorteggio(anno, dimensione);
+          const nonMescolare = document.getElementById("check-non-mescolare").checked;
+          eseguiSorteggio(anno, dimensione, nonMescolare);
         });
       }
     }
 
-    async function eseguiSorteggio(anno, dimensione) {
+    async function eseguiSorteggio(anno, dimensione, nonMescolare) {
       mostraMessaggio("Sorteggio in corso…", "successo");
 
       const snapPartecipanti = await getDocs(collection(db, "tornei", anno, "partecipanti"));
@@ -872,10 +883,10 @@
         return;
       }
 
-      const uominiMescolati = mescola(uomini);
-      const donneMescolate = mescola(donne);
+      const uominiMescolati = nonMescolare ? uomini : mescola(uomini);
+      const donneMescolate = nonMescolare ? donne : mescola(donne);
       const coppie = uominiMescolati.map((uomo, i) => ({ uomo, donna: donneMescolate[i] }));
-      const coppieMescolate = mescola(coppie);
+      const coppieMescolate = nonMescolare ? coppie : mescola(coppie);
 
       const slots = costruisciSlot(coppieMescolate, dimensione);
       const turni = costruisciTabelloneCompleto(slots);
@@ -1085,6 +1096,106 @@
 
       await setDoc(rif, { vincitore }, { merge: true });
       await propagaVincitore(anno, turno, posizione, label, totaleTurni);
+    }
+
+    // ---------- Albo d'oro ----------
+    async function renderAlboOro(annoInModifica) {
+      const cardEl = document.getElementById("card-albo-oro");
+      const snap = await getDocs(collection(db, "alboOro"));
+      const voci = [];
+      snap.forEach(d => voci.push({ anno: d.id, ...d.data() }));
+      voci.sort((a, b) => b.anno.localeCompare(a.anno));
+
+      const inModifica = annoInModifica ? voci.find(v => v.anno === annoInModifica) : null;
+
+      cardEl.innerHTML = `
+        <h2>Albo d'oro</h2>
+        <p class="sottotitolo">Storico delle edizioni, anche quelle non ricostruite per intero.</p>
+
+        <div class="riga-sorteggio" style="align-items:flex-start; flex-wrap:wrap;">
+          <input type="number" id="albo-anno" placeholder="Anno" value="${inModifica ? inModifica.anno : ""}"
+                 style="width:100px; font-family:var(--font-mono); font-size:0.95rem; padding:0.5rem 0.7rem; border:1.5px solid var(--inchiostro); border-radius:var(--radius);">
+
+          <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.85rem;">
+            <input type="checkbox" id="albo-non-disputato" ${inModifica && inModifica.nonDisputato ? "checked" : ""}>
+            Non disputato
+          </label>
+
+          <input type="text" id="albo-coppia" placeholder="Coppia vincitrice, es. Marco Bianchi - Sara Galli"
+                 value="${inModifica && !inModifica.nonDisputato ? (inModifica.coppia || "") : ""}"
+                 style="flex:1; min-width:220px; font-size:0.95rem; padding:0.5rem 0.7rem; border:1.5px solid var(--campo-ghiaia-scuro); border-radius:var(--radius);">
+
+          <input type="text" id="albo-motivo" placeholder="Motivo (es. maltempo)"
+                 value="${inModifica && inModifica.nonDisputato ? (inModifica.motivo || "") : ""}"
+                 style="flex:1; min-width:180px; font-size:0.95rem; padding:0.5rem 0.7rem; border:1.5px solid var(--campo-ghiaia-scuro); border-radius:var(--radius);">
+
+          <button class="btn btn-primario" id="btn-salva-albo">${inModifica ? "Salva modifiche" : "Aggiungi"}</button>
+        </div>
+
+        <table style="width:100%; border-collapse:collapse; margin-top:1.4rem;">
+          <thead>
+            <tr style="text-align:left; font-family:var(--font-mono); font-size:0.75rem; text-transform:uppercase; color:var(--inchiostro-soft);">
+              <th style="padding:0.5rem 0.6rem; border-bottom:2px solid var(--inchiostro);">Anno</th>
+              <th style="padding:0.5rem 0.6rem; border-bottom:2px solid var(--inchiostro);">Coppia vincitrice</th>
+              <th style="padding:0.5rem 0.6rem; border-bottom:2px solid var(--inchiostro);"></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${voci.length ? voci.map(v => `
+              <tr>
+                <td style="padding:0.6rem; border-bottom:1px dashed var(--campo-ghiaia-scuro); font-family:var(--font-mono); color:var(--terracotta);">${v.anno}</td>
+                <td style="padding:0.6rem; border-bottom:1px dashed var(--campo-ghiaia-scuro);">
+                  ${v.nonDisputato ? `<em>Non disputato${v.motivo ? " — " + v.motivo : ""}</em>` : (v.coppia || "—")}
+                </td>
+                <td style="padding:0.6rem; border-bottom:1px dashed var(--campo-ghiaia-scuro); white-space:nowrap;">
+                  <button data-modifica="${v.anno}" style="border:none; background:none; color:var(--terracotta-scuro); cursor:pointer; font-family:var(--font-mono); font-size:0.82rem;">Modifica</button>
+                  <button data-elimina="${v.anno}" style="border:none; background:none; color:var(--terracotta-scuro); cursor:pointer; font-family:var(--font-mono); font-size:0.82rem;">Elimina</button>
+                </td>
+              </tr>
+            `).join("") : `<tr><td colspan="3" class="stato-vuoto">Nessuna edizione ancora registrata nell'albo d'oro.</td></tr>`}
+          </tbody>
+        </table>
+      `;
+
+      document.getElementById("btn-salva-albo").addEventListener("click", salvaVoceAlbo);
+      cardEl.querySelectorAll("button[data-modifica]").forEach(btn => {
+        btn.addEventListener("click", () => renderAlboOro(btn.dataset.modifica));
+      });
+      cardEl.querySelectorAll("button[data-elimina]").forEach(btn => {
+        btn.addEventListener("click", () => eliminaVoceAlbo(btn.dataset.elimina));
+      });
+    }
+
+    async function salvaVoceAlbo() {
+      const anno = document.getElementById("albo-anno").value.trim();
+      const nonDisputato = document.getElementById("albo-non-disputato").checked;
+      const coppia = document.getElementById("albo-coppia").value.trim();
+      const motivo = document.getElementById("albo-motivo").value.trim();
+
+      if (!anno || anno.length !== 4) {
+        mostraMessaggio("Inserisci un anno valido, es. 2025.", "errore");
+        return;
+      }
+      if (!nonDisputato && !coppia) {
+        mostraMessaggio("Inserisci la coppia vincitrice, oppure spunta 'Non disputato'.", "errore");
+        return;
+      }
+
+      await setDoc(doc(db, "alboOro", anno), {
+        nonDisputato,
+        coppia: nonDisputato ? null : coppia,
+        motivo: nonDisputato ? motivo : null
+      });
+
+      mostraMessaggio(`Edizione ${anno} salvata nell'albo d'oro.`, "successo");
+      await renderAlboOro();
+    }
+
+    async function eliminaVoceAlbo(anno) {
+      const confermato = window.confirm(`Eliminare la voce dell'albo d'oro per il ${anno}?`);
+      if (!confermato) return;
+      await deleteDoc(doc(db, "alboOro", anno));
+      await renderAlboOro();
     }
   </script>
 </body>
