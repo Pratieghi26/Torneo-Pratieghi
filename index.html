@@ -362,7 +362,16 @@
       }
 
       const anni = [];
-      snap.forEach(d => anni.push(d.id));
+      snap.forEach(d => {
+        const dati = d.data();
+        if (dati.visibile !== false) anni.push(d.id);
+      });
+
+      if (anni.length === 0) {
+        selettore.innerHTML = `<option value="">Nessuna edizione</option>`;
+        contenuto.innerHTML = `<div class="stato-vuoto" style="padding:4rem 1.5rem;">Nessuna edizione pubblica al momento.</div>`;
+        return;
+      }
       anni.sort((a, b) => b.localeCompare(a));
 
       selettore.innerHTML = anni.map(a => `<option value="${a}">${a}</option>`).join("");
@@ -375,11 +384,14 @@
       badgeEdizione.textContent = `Edizione ${anno}`;
       contenuto.innerHTML = `<div class="stato-vuoto" style="padding:4rem 1.5rem;">Caricamento…</div>`;
 
-      const [snapPartecipanti, snapCoppie, snapIncontri] = await Promise.all([
+      const [snapTorneo, snapPartecipanti, snapCoppie, snapIncontri] = await Promise.all([
+        getDoc(doc(db, "tornei", anno)),
         getDocs(collection(db, "tornei", anno, "partecipanti")),
         getDocs(collection(db, "tornei", anno, "coppie")),
         getDocs(collection(db, "tornei", anno, "incontri"))
       ]);
+
+      const datiTorneo = snapTorneo.exists() ? snapTorneo.data() : {};
 
       const uomini = [];
       const donne = [];
@@ -395,6 +407,15 @@
       coppie.sort((a, b) => a.numero - b.numero);
 
       let html = "";
+
+      if (datiTorneo.fotoCopertina) {
+        html += `
+          <div style="max-width:1080px; margin:0 auto; padding:2rem 1.5rem 0;">
+            <img src="${datiTorneo.fotoCopertina}" alt="Foto edizione ${anno}"
+                 style="width:100%; max-height:420px; object-fit:cover; border-radius:4px; box-shadow:0 6px 20px rgba(35,40,31,0.12);">
+          </div>
+        `;
+      }
 
       html += `
         <section class="sezione">
