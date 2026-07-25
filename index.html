@@ -442,6 +442,19 @@
 
       let html = "";
 
+      if (datiTorneo.dataOra) {
+        const d = new Date(datiTorneo.dataOra);
+        const testoData = d.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
+        const testoOra = d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+        html += `
+          <div style="max-width:1080px; margin:1.5rem auto 0; padding:0 1.5rem; text-align:center;">
+            <span style="display:inline-flex; align-items:center; gap:0.5rem; font-family:var(--font-mono); font-size:0.9rem; background:var(--carta); border:1px solid var(--campo-ghiaia-scuro); border-radius:999px; padding:0.5rem 1.1rem; color:var(--terracotta-scuro);">
+              📅 ${testoData}, ore ${testoOra}
+            </span>
+          </div>
+        `;
+      }
+
       if (datiTorneo.fotoCopertina) {
         html += `
           <div style="max-width:1080px; margin:0 auto; padding:2rem 1.5rem 0;">
