@@ -630,7 +630,7 @@
         </div>
 
         <div class="card" id="card-impostazioni">
-          <h2>Foto e visibilità</h2>
+          <h2>Foto, data e visibilità</h2>
           <p class="sottotitolo">Caricamento…</p>
         </div>
       `;
@@ -1211,12 +1211,22 @@
       const visibile = stato.visibile !== false;
 
       cardEl.innerHTML = `
-        <h2>Foto e visibilità</h2>
-        <p class="sottotitolo">Gestisci se questa edizione compare nella pagina pubblica, e la sua foto di copertina.</p>
+        <h2>Foto, data e visibilità</h2>
+        <p class="sottotitolo">Gestisci se questa edizione compare nella pagina pubblica, quando si gioca e la sua foto di copertina.</p>
 
         <div class="riga-sorteggio">
           <button class="btn" id="btn-toggle-visibile">${visibile ? "🙈 Nascondi al pubblico" : "👁️ Mostra al pubblico"}</button>
           ${!visibile ? `<span class="badge-bloccato">Nascosta al pubblico</span>` : ""}
+        </div>
+
+        <div style="margin-top:1.2rem;">
+          <label style="font-family:var(--font-mono); font-size:0.8rem; display:block; margin-bottom:0.6rem;">Data e ora del torneo</label>
+          <div class="riga-sorteggio">
+            <input type="datetime-local" id="input-data-ora" value="${stato.dataOra || ""}"
+                   style="font-family:var(--font-mono); font-size:0.95rem; padding:0.5rem 0.7rem; border:1.5px solid var(--campo-ghiaia-scuro); border-radius:var(--radius);">
+            <button class="btn btn-primario" id="btn-salva-data">Salva data</button>
+            ${stato.dataOra ? `<button class="btn" id="btn-rimuovi-data">Rimuovi</button>` : ""}
+          </div>
         </div>
 
         <div style="margin-top:1.2rem;">
@@ -1239,6 +1249,21 @@
         await setDoc(doc(db, "tornei", anno), { visibile: !visibile }, { merge: true });
         await renderImpostazioniEdizione(anno);
       });
+
+      document.getElementById("btn-salva-data").addEventListener("click", async () => {
+        const valore = document.getElementById("input-data-ora").value;
+        await setDoc(doc(db, "tornei", anno), { dataOra: valore || null }, { merge: true });
+        mostraMessaggio("Data del torneo salvata.", "successo");
+        await renderImpostazioniEdizione(anno);
+      });
+
+      const btnRimuoviData = document.getElementById("btn-rimuovi-data");
+      if (btnRimuoviData) {
+        btnRimuoviData.addEventListener("click", async () => {
+          await setDoc(doc(db, "tornei", anno), { dataOra: null }, { merge: true });
+          await renderImpostazioniEdizione(anno);
+        });
+      }
 
       document.getElementById("btn-salva-foto").addEventListener("click", () => caricaFotoCopertina(anno));
 
