@@ -117,7 +117,8 @@
       justify-content: center;
       align-items: center;
       gap: 0.6rem;
-      padding: 1.4rem 1.5rem 0;
+      padding: 2rem 1.5rem;
+      border-top: 1px solid var(--campo-ghiaia-scuro);
       flex-wrap: wrap;
     }
     .barra-selettore label {
@@ -331,14 +332,14 @@
     <a href="regolamento.html" class="btn-nav">📖 Regolamento</a>
   </nav>
 
+  <main id="contenuto-torneo">
+    <div class="stato-vuoto" style="padding:4rem 1.5rem;">Caricamento del torneo…</div>
+  </main>
+
   <div class="barra-selettore">
     <label for="selettore-anno">Sfoglia edizione:</label>
     <select id="selettore-anno"><option>Caricamento…</option></select>
   </div>
-
-  <main id="contenuto-torneo">
-    <div class="stato-vuoto" style="padding:4rem 1.5rem;">Caricamento del torneo…</div>
-  </main>
 
   <footer class="footer-pubblico">
     Torneo di Bocce di Pratieghi — <a href="admin/login.html">Area amministratore</a>
@@ -566,3 +567,4 @@
     popolaSelettore();
   </script>
 </body>
+</html>
