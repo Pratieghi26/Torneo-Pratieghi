@@ -128,11 +128,25 @@
     .barra-selettore select {
       font-family: var(--font-mono);
       font-size: 0.95rem;
-      padding: 0.5rem 0.9rem;
-      border: 1.5px solid var(--inchiostro);
-      border-radius: var(--radius);
+      padding: 0.55rem 1.1rem;
+      border: 1.5px solid var(--campo-ghiaia-scuro);
+      border-radius: 999px;
       background: var(--carta);
       color: var(--inchiostro);
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: linear-gradient(45deg, transparent 50%, var(--terracotta) 50%), linear-gradient(135deg, var(--terracotta) 50%, transparent 50%);
+      background-position: calc(100% - 16px) center, calc(100% - 11px) center;
+      background-size: 5px 5px, 5px 5px;
+      background-repeat: no-repeat;
+      padding-right: 2rem;
+      cursor: pointer;
+      transition: border-color 0.15s ease;
+    }
+    .barra-selettore select:hover,
+    .barra-selettore select:focus {
+      border-color: var(--terracotta);
+      outline: none;
     }
 
     .btn-nav {
@@ -449,7 +463,7 @@
         html += `
           <div style="max-width:1080px; margin:1.5rem auto 0; padding:0 1.5rem; text-align:center;">
             <span style="display:inline-flex; align-items:center; gap:0.5rem; font-family:var(--font-mono); font-size:0.9rem; background:var(--carta); border:1px solid var(--campo-ghiaia-scuro); border-radius:999px; padding:0.5rem 1.1rem; color:var(--terracotta-scuro);">
-              📅 ${testoData}, ore ${testoOra}
+              🕓 ${testoData}, ore ${testoOra}
             </span>
           </div>
         `;
@@ -552,4 +566,3 @@
     popolaSelettore();
   </script>
 </body>
-</html>
