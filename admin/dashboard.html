@@ -376,7 +376,23 @@
     .match-box .lato {
       padding: 0.5rem 0.7rem;
       font-size: 0.86rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.4rem;
     }
+
+    .btn-sostituisci {
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-size: 0.75rem;
+      opacity: 0.55;
+      flex-shrink: 0;
+      padding: 0;
+      line-height: 1;
+    }
+    .btn-sostituisci:hover { opacity: 1; }
 
     .match-box .lato:first-child { border-bottom: 1px solid var(--campo-ghiaia-scuro); }
 
@@ -990,7 +1006,8 @@
 
         <div class="riga-sorteggio" style="margin-top:1.2rem;">
           <button class="btn" id="btn-blocca">${bloccato ? "🔓 Sblocca sorteggio" : "🔒 Blocca sorteggio"}</button>
-          ${!bloccato ? `<button class="btn" id="btn-rifai">↻ Rifai sorteggio</button>` : ""}
+          ${!bloccato ? `<button class="btn" id="btn-reset">↺ Reset tabellone</button>` : ""}
+          ${!bloccato ? `<button class="btn" id="btn-rifai">🎲 Rifai sorteggio</button>` : ""}
         </div>
       `;
 
@@ -999,11 +1016,16 @@
         await renderSorteggio(anno);
       });
 
+      const btnReset = document.getElementById("btn-reset");
+      if (btnReset) {
+        btnReset.addEventListener("click", () => resettaTabellone(anno, dimensione, totaleTurni));
+      }
+
       const btnRifai = document.getElementById("btn-rifai");
       if (btnRifai) {
         btnRifai.addEventListener("click", () => {
           const confermato = window.confirm(
-            "Rifare il sorteggio cancella le coppie e il tabellone attuali. Continuare?"
+            "Rifare il sorteggio cancella le coppie e il tabellone attuali, mescolando tutto da capo. Continuare?"
           );
           if (confermato) {
             renderFormSorteggio(cardEl, anno);
@@ -1018,6 +1040,13 @@
             const p = Number(el.dataset.posizione);
             const lato = el.dataset.lato;
             selezionaVincitore(anno, t, p, lato, totaleTurni);
+          });
+        });
+
+        cardEl.querySelectorAll(".btn-sostituisci").forEach(btn => {
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            sostituisciNome(anno, btn.dataset.nome, totaleTurni);
           });
         });
       }
@@ -1054,10 +1083,19 @@
       const testoA = m.squadraA || "In attesa";
       const testoB = m.squadraB || "In attesa";
 
+      const mostraSostituisciA = !bloccato && m.squadraA && m.squadraA !== "BYE";
+      const mostraSostituisciB = !bloccato && m.squadraB && m.squadraB !== "BYE";
+
       return `
         <div class="match-box">
-          <div class="lato ${classeA}" ${cliccabileA ? `data-turno="${indiceTurno}" data-posizione="${posizione}" data-lato="a"` : ""}>${testoA}</div>
-          <div class="lato ${classeB}" ${cliccabileB ? `data-turno="${indiceTurno}" data-posizione="${posizione}" data-lato="b"` : ""}>${testoB}</div>
+          <div class="lato ${classeA}" ${cliccabileA ? `data-turno="${indiceTurno}" data-posizione="${posizione}" data-lato="a"` : ""}>
+            <span>${testoA}</span>
+            ${mostraSostituisciA ? `<button class="btn-sostituisci" data-nome="${testoA.replace(/"/g, "&quot;")}" title="Sostituisci nome">✏️</button>` : ""}
+          </div>
+          <div class="lato ${classeB}" ${cliccabileB ? `data-turno="${indiceTurno}" data-posizione="${posizione}" data-lato="b"` : ""}>
+            <span>${testoB}</span>
+            ${mostraSostituisciB ? `<button class="btn-sostituisci" data-nome="${testoB.replace(/"/g, "&quot;")}" title="Sostituisci nome">✏️</button>` : ""}
+          </div>
         </div>
       `;
     }
@@ -1102,6 +1140,78 @@
 
       await setDoc(rif, { vincitore }, { merge: true });
       await propagaVincitore(anno, turno, posizione, label, totaleTurni);
+    }
+
+    // Riporta il tabellone allo stato appena dopo il sorteggio: il primo
+    // turno (chi gioca contro chi) resta identico, ma tutte le selezioni
+    // dei turni successivi vengono annullate. I BYE del primo turno restano
+    // automaticamente risolti, le partite reali tornano "in attesa".
+    async function resettaTabellone(anno, dimensione, totaleTurni) {
+      const confermato = window.confirm(
+        "Il tabellone tornerà allo stato del sorteggio iniziale: gli accoppiamenti del primo turno NON cambiano, ma tutte le selezioni dei turni successivi verranno annullate. Continuare?"
+      );
+      if (!confermato) return;
+
+      const snapIncontri = await getDocs(collection(db, "tornei", anno, "incontri"));
+      const tutti = [];
+      snapIncontri.forEach(d => tutti.push({ ref: d.ref, ...d.data() }));
+
+      const round0 = tutti.filter(m => m.turno === 0).sort((a, b) => a.posizione - b.posizione);
+      const altri = tutti.filter(m => m.turno !== 0);
+
+      const batch = writeBatch(db);
+      const round0Aggiornato = [];
+
+      round0.forEach(m => {
+        let vincitore = null;
+        if (m.squadraA === "BYE" && m.squadraB) vincitore = "b";
+        else if (m.squadraB === "BYE" && m.squadraA) vincitore = "a";
+        batch.set(m.ref, { vincitore }, { merge: true });
+        round0Aggiornato.push({ ...m, vincitore });
+      });
+
+      altri.forEach(m => {
+        batch.set(m.ref, { squadraA: null, squadraB: null, vincitore: null }, { merge: true });
+      });
+
+      await batch.commit();
+      mostraMessaggio("Tabellone azzerato: sorteggio iniziale mantenuto.", "successo");
+
+      for (const m of round0Aggiornato) {
+        if (m.vincitore) {
+          const label = m.vincitore === "a" ? m.squadraA : m.squadraB;
+          await propagaVincitore(anno, 0, m.posizione, label, totaleTurni);
+        }
+      }
+
+      await renderSorteggio(anno);
+    }
+
+    // Sostituisce un nome ovunque compaia nel tabellone (utile per un
+    // sostituto in caso di assenza). Non tocca la lista "coppie" originale.
+    async function sostituisciNome(anno, nomeAttuale, totaleTurni) {
+      const nuovo = window.prompt(`Sostituisci "${nomeAttuale}" con:`, nomeAttuale);
+      if (nuovo === null) return;
+      const nuovoNome = nuovo.trim();
+      if (!nuovoNome || nuovoNome === nomeAttuale) return;
+
+      const snap = await getDocs(collection(db, "tornei", anno, "incontri"));
+      const batch = writeBatch(db);
+      let modificati = 0;
+
+      snap.forEach(d => {
+        const dati = d.data();
+        const aggiornamento = {};
+        if (dati.squadraA === nomeAttuale) { aggiornamento.squadraA = nuovoNome; modificati++; }
+        if (dati.squadraB === nomeAttuale) { aggiornamento.squadraB = nuovoNome; modificati++; }
+        if (Object.keys(aggiornamento).length > 0) {
+          batch.set(d.ref, aggiornamento, { merge: true });
+        }
+      });
+
+      await batch.commit();
+      mostraMessaggio(`"${nomeAttuale}" sostituito con "${nuovoNome}" in ${modificati} punto/i del tabellone.`, "successo");
+      await renderSorteggio(anno);
     }
 
     // ---------- Albo d'oro ----------
