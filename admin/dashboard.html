@@ -1220,12 +1220,25 @@
         </div>
 
         <div style="margin-top:1.2rem;">
-          <label style="font-family:var(--font-mono); font-size:0.8rem; display:block; margin-bottom:0.6rem;">Data e ora del torneo</label>
+          <label style="font-family:var(--font-mono); font-size:0.8rem; display:block; margin-bottom:0.6rem;">Date e orari del torneo</label>
+          <div id="lista-date" style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.8rem;">
+            ${(stato.dateOre || []).length === 0
+              ? `<p class="stato-vuoto" style="padding:0; text-align:left; margin:0;">Nessuna data inserita.</p>`
+              : [...stato.dateOre].sort().map(iso => {
+                  const d = new Date(iso);
+                  const testo = d.toLocaleDateString("it-IT", { day: "numeric", month: "long" }) + ", ore " + d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+                  return `
+                    <span style="display:inline-flex; align-items:center; gap:0.5rem; font-family:var(--font-mono); font-size:0.85rem; background:#fff; border:1px solid var(--campo-ghiaia-scuro); border-radius:999px; padding:0.4rem 0.6rem 0.4rem 0.9rem;">
+                      ${testo}
+                      <button data-rimuovi-data="${iso}" style="border:none; background:none; color:var(--terracotta-scuro); cursor:pointer; font-size:1rem; line-height:1; padding:0;">×</button>
+                    </span>
+                  `;
+                }).join("")}
+          </div>
           <div class="riga-sorteggio">
-            <input type="datetime-local" id="input-data-ora" value="${stato.dataOra || ""}"
+            <input type="datetime-local" id="input-nuova-data"
                    style="font-family:var(--font-mono); font-size:0.95rem; padding:0.5rem 0.7rem; border:1.5px solid var(--campo-ghiaia-scuro); border-radius:var(--radius);">
-            <button class="btn btn-primario" id="btn-salva-data">Salva data</button>
-            ${stato.dataOra ? `<button class="btn" id="btn-rimuovi-data">Rimuovi</button>` : ""}
+            <button class="btn btn-primario" id="btn-aggiungi-data">+ Aggiungi data</button>
           </div>
         </div>
 
@@ -1260,20 +1273,31 @@
         await renderImpostazioniEdizione(anno);
       });
 
-      document.getElementById("btn-salva-data").addEventListener("click", async () => {
-        const valore = document.getElementById("input-data-ora").value;
-        await setDoc(doc(db, "tornei", anno), { dataOra: valore || null }, { merge: true });
-        mostraMessaggio("Data del torneo salvata.", "successo");
+      document.getElementById("btn-aggiungi-data").addEventListener("click", async () => {
+        const valore = document.getElementById("input-nuova-data").value;
+        if (!valore) {
+          mostraMessaggio("Scegli prima una data e un orario.", "errore");
+          return;
+        }
+        const dateAttuali = stato.dateOre || [];
+        if (dateAttuali.includes(valore)) {
+          mostraMessaggio("Questa data è già stata aggiunta.", "errore");
+          return;
+        }
+        const nuovoElenco = [...dateAttuali, valore];
+        await setDoc(doc(db, "tornei", anno), { dateOre: nuovoElenco }, { merge: true });
+        mostraMessaggio("Data aggiunta.", "successo");
         await renderImpostazioniEdizione(anno);
       });
 
-      const btnRimuoviData = document.getElementById("btn-rimuovi-data");
-      if (btnRimuoviData) {
-        btnRimuoviData.addEventListener("click", async () => {
-          await setDoc(doc(db, "tornei", anno), { dataOra: null }, { merge: true });
+      cardEl.querySelectorAll("button[data-rimuovi-data]").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const dateAttuali = stato.dateOre || [];
+          const nuovoElenco = dateAttuali.filter(d => d !== btn.dataset.rimuoviData);
+          await setDoc(doc(db, "tornei", anno), { dateOre: nuovoElenco }, { merge: true });
           await renderImpostazioniEdizione(anno);
         });
-      }
+      });
 
       document.getElementById("btn-salva-foto").addEventListener("click", () => caricaFotoCopertina(anno));
 
