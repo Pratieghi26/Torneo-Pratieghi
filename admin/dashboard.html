@@ -382,7 +382,8 @@
       gap: 0.4rem;
     }
 
-    .btn-sostituisci {
+    .btn-sostituisci,
+    .btn-modifica-coppia {
       border: none;
       background: none;
       cursor: pointer;
@@ -392,7 +393,8 @@
       padding: 0;
       line-height: 1;
     }
-    .btn-sostituisci:hover { opacity: 1; }
+    .btn-sostituisci:hover,
+    .btn-modifica-coppia:hover { opacity: 1; }
 
     .match-box .lato:first-child { border-bottom: 1px solid var(--campo-ghiaia-scuro); }
 
@@ -963,7 +965,7 @@
 
     async function renderTabelloneEsistente(cardEl, anno, statoTorneo, snapCoppie) {
       const coppie = [];
-      snapCoppie.forEach(d => coppie.push(d.data()));
+      snapCoppie.forEach(d => coppie.push({ id: d.id, ...d.data() }));
       coppie.sort((a, b) => a.numero - b.numero);
 
       const dimensione = statoTorneo.dimensioneTabellone;
@@ -987,8 +989,9 @@
 
         <div class="griglia-coppie-lista">
           ${coppie.map(c => `
-            <div class="coppia-mini">
-              <strong>${c.numero}.</strong> ${c.uomo} — ${c.donna}
+            <div class="coppia-mini" style="display:flex; align-items:center; justify-content:space-between; gap:0.4rem;">
+              <span><strong>${c.numero}.</strong> ${c.uomo} — ${c.donna}</span>
+              ${!bloccato ? `<button class="btn-modifica-coppia" data-coppia-id="${c.id}" data-uomo="${c.uomo.replace(/"/g, "&quot;")}" data-donna="${c.donna.replace(/"/g, "&quot;")}" title="Modifica coppia">✏️</button>` : ""}
             </div>
           `).join("")}
         </div>
@@ -1047,6 +1050,13 @@
           btn.addEventListener("click", (e) => {
             e.stopPropagation();
             sostituisciNome(anno, btn.dataset.nome, totaleTurni);
+          });
+        });
+
+        cardEl.querySelectorAll(".btn-modifica-coppia").forEach(btn => {
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            modificaCoppia(anno, btn.dataset.coppiaId, btn.dataset.uomo, btn.dataset.donna);
           });
         });
       }
@@ -1211,6 +1221,43 @@
 
       await batch.commit();
       mostraMessaggio(`"${nomeAttuale}" sostituito con "${nuovoNome}" in ${modificati} punto/i del tabellone.`, "successo");
+      await renderSorteggio(anno);
+    }
+
+    // Modifica i nomi di una coppia nell'elenco, propagando il cambio
+    // anche in tutti i punti del tabellone dove la coppia già compare.
+    async function modificaCoppia(anno, coppiaId, uomoAttuale, donnaAttuale) {
+      const nuovoUomo = window.prompt("Nome uomo:", uomoAttuale);
+      if (nuovoUomo === null) return;
+      const nuovaDonna = window.prompt("Nome donna:", donnaAttuale);
+      if (nuovaDonna === null) return;
+
+      const uomoTrim = nuovoUomo.trim() || uomoAttuale;
+      const donnaTrim = nuovaDonna.trim() || donnaAttuale;
+      if (uomoTrim === uomoAttuale && donnaTrim === donnaAttuale) return;
+
+      const vecchiaEtichetta = `${uomoAttuale} - ${donnaAttuale}`;
+      const nuovaEtichetta = `${uomoTrim} - ${donnaTrim}`;
+
+      await setDoc(doc(db, "tornei", anno, "coppie", coppiaId), { uomo: uomoTrim, donna: donnaTrim }, { merge: true });
+
+      if (vecchiaEtichetta !== nuovaEtichetta) {
+        const snap = await getDocs(collection(db, "tornei", anno, "incontri"));
+        const batch = writeBatch(db);
+        let modificati = 0;
+        snap.forEach(d => {
+          const dati = d.data();
+          const aggiornamento = {};
+          if (dati.squadraA === vecchiaEtichetta) { aggiornamento.squadraA = nuovaEtichetta; modificati++; }
+          if (dati.squadraB === vecchiaEtichetta) { aggiornamento.squadraB = nuovaEtichetta; modificati++; }
+          if (Object.keys(aggiornamento).length > 0) {
+            batch.set(d.ref, aggiornamento, { merge: true });
+          }
+        });
+        if (modificati > 0) await batch.commit();
+      }
+
+      mostraMessaggio("Coppia aggiornata.", "successo");
       await renderSorteggio(anno);
     }
 
