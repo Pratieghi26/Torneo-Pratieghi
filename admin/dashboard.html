@@ -383,7 +383,8 @@
     }
 
     .btn-sostituisci,
-    .btn-modifica-coppia {
+    .btn-modifica-coppia,
+    .btn-assegna {
       border: none;
       background: none;
       cursor: pointer;
@@ -394,7 +395,8 @@
       line-height: 1;
     }
     .btn-sostituisci:hover,
-    .btn-modifica-coppia:hover { opacity: 1; }
+    .btn-modifica-coppia:hover,
+    .btn-assegna:hover { opacity: 1; }
 
     .match-box .lato:first-child { border-bottom: 1px solid var(--campo-ghiaia-scuro); }
 
@@ -1059,6 +1061,16 @@
             modificaCoppia(anno, btn.dataset.coppiaId, btn.dataset.uomo, btn.dataset.donna);
           });
         });
+
+        cardEl.querySelectorAll(".btn-assegna").forEach(btn => {
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const t = Number(btn.dataset.turno);
+            const p = Number(btn.dataset.posizione);
+            const lato = btn.dataset.lato;
+            modificaSlotManuale(anno, t, p, lato, btn.dataset.valore);
+          });
+        });
       }
     }
 
@@ -1095,16 +1107,24 @@
 
       const mostraSostituisciA = !bloccato && m.squadraA && m.squadraA !== "BYE";
       const mostraSostituisciB = !bloccato && m.squadraB && m.squadraB !== "BYE";
+      const mostraAssegnaA = !bloccato && m.squadraA !== "BYE";
+      const mostraAssegnaB = !bloccato && m.squadraB !== "BYE";
 
       return `
         <div class="match-box">
           <div class="lato ${classeA}" ${cliccabileA ? `data-turno="${indiceTurno}" data-posizione="${posizione}" data-lato="a"` : ""}>
             <span>${testoA}</span>
-            ${mostraSostituisciA ? `<button class="btn-sostituisci" data-nome="${testoA.replace(/"/g, "&quot;")}" title="Sostituisci nome">✏️</button>` : ""}
+            <span style="display:flex; gap:0.3rem; flex-shrink:0;">
+              ${mostraSostituisciA ? `<button class="btn-sostituisci" data-nome="${testoA.replace(/"/g, "&quot;")}" title="Sostituisci ovunque nel tabellone">✏️</button>` : ""}
+              ${mostraAssegnaA ? `<button class="btn-assegna" data-turno="${indiceTurno}" data-posizione="${posizione}" data-lato="a" data-valore="${(m.squadraA || "").replace(/"/g, "&quot;")}" title="Assegna solo qui">🔀</button>` : ""}
+            </span>
           </div>
           <div class="lato ${classeB}" ${cliccabileB ? `data-turno="${indiceTurno}" data-posizione="${posizione}" data-lato="b"` : ""}>
             <span>${testoB}</span>
-            ${mostraSostituisciB ? `<button class="btn-sostituisci" data-nome="${testoB.replace(/"/g, "&quot;")}" title="Sostituisci nome">✏️</button>` : ""}
+            <span style="display:flex; gap:0.3rem; flex-shrink:0;">
+              ${mostraSostituisciB ? `<button class="btn-sostituisci" data-nome="${testoB.replace(/"/g, "&quot;")}" title="Sostituisci ovunque nel tabellone">✏️</button>` : ""}
+              ${mostraAssegnaB ? `<button class="btn-assegna" data-turno="${indiceTurno}" data-posizione="${posizione}" data-lato="b" data-valore="${(m.squadraB || "").replace(/"/g, "&quot;")}" title="Assegna solo qui">🔀</button>` : ""}
+            </span>
           </div>
         </div>
       `;
@@ -1258,6 +1278,24 @@
       }
 
       mostraMessaggio("Coppia aggiornata.", "successo");
+      await renderSorteggio(anno);
+    }
+
+    // Modifica il contenuto di UNA SOLA casella del tabellone (es. i quarti
+    // ridisegnati a mano), senza toccare nessun'altra casella anche se
+    // contiene lo stesso nome. Azzera il vincitore di quella partita,
+    // perché l'accoppiamento è cambiato.
+    async function modificaSlotManuale(anno, turno, posizione, lato, valoreAttuale) {
+      const etichetta = valoreAttuale ? `Modifica questa casella (attuale: "${valoreAttuale}"):` : "Scrivi il nome da assegnare a questa casella:";
+      const nuovo = window.prompt(etichetta, valoreAttuale || "");
+      if (nuovo === null) return;
+
+      const nuovoValore = nuovo.trim();
+      const chiave = lato === "a" ? "squadraA" : "squadraB";
+      const rif = doc(db, "tornei", anno, "incontri", `${turno}_${posizione}`);
+
+      await setDoc(rif, { [chiave]: nuovoValore || null, vincitore: null }, { merge: true });
+      mostraMessaggio("Casella aggiornata.", "successo");
       await renderSorteggio(anno);
     }
 
